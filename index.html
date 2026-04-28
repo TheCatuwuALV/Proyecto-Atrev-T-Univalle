@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <link rel="icon" href="Recources/Borcelle.svg">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="https://i.pinimg.com/736x/c1/c5/29/c1c529d43e4830aeccd46f06449590f0.jpg">
+<title>OntamiWawa - Centro de Monitoreo GPS</title>
+
+<script src="https://api.mapbox.com/mapbox-gl-js/v2.14.1/mapbox-gl.js"></script>
+<link href="https://api.mapbox.com/mapbox-gl-js/v2.14.1/mapbox-gl.css" rel="stylesheet"/>
+
+<script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.0/mapbox-gl-draw.js"></script>
+<link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.0/mapbox-gl-draw.css">
+
+<script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+
+<style>
+body {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  font-family: 'Segoe UI', sans-serif;
+  background: #0a0a0a;
+  color: white;
+  overflow: hidden;
+}
+
+#topbar {
+  height: 58px;
+  background: rgba(10, 10, 10, 0.96);
+  border-bottom: 2px solid #222;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 22px;
+}
+
+#brand {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: #ff5252;
+}
+
+#subbrand {
+  font-size: 12px;
+  opacity: 0.65;
+}
+
+#mapa {
+  flex-grow: 1;
+  width: 100%;
+  filter: brightness(0.9);
+}
+
+footer {
+  min-height: 170px;
+  background: rgba(15, 15, 15, 0.97);
+  border-top: 2px solid #333;
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1.2fr;
+  padding: 18px 35px;
+  gap: 24px;
+  align-items: center;
+}
+
+.info-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.label {
+  opacity: 0.6;
+  font-size: 12px;
+  letter-spacing: 2px;
+}
+
+.value {
+  font-size: 17px;
+  color: #ff5252;
+}
+
+#status-pill {
+  padding: 15px 26px;
+  background: #1a1a1a;
+  border: 2px solid #444;
+  border-radius: 50px;
+  font-weight: bold;
+  font-size: 20px;
+  min-width: 250px;
+  text-align: center;
+  transition: all 0.3s;
+}
+
+.dentro {
+  color: #49c287;
+  border-color: #49c287 !important;
+  text-shadow: 0 0 10px rgba(0,230,118,0.5);
+}
+
+.fuera {
+  color: #ff5252;
+  border-color: #ff5252 !important;
+  text-shadow: 0 0 10px rgba(255,82,82,0.5);
+  animation: blink 1s infinite;
+}
+
+.sin-senal {
+  color: #ffc107;
+  border-color: #ffc107 !important;
+  text-shadow: 0 0 10px rgba(255,193,7,0.5);
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  0% { opacity: 1; }
+  50% { opacity: 0.65; }
+  100% { opacity: 1; }
+}
+
+.marcador-nino {
+  width: 24px;
+  height: 24px;
+  background: #ff5252;
+  border: 3px solid white;
+  border-radius: 50%;
+  box-shadow: 0 0 18px #ff5252;
+  z-index: 2;
+}
+
+.marcador-padre {
+  width: 19px;
+  height: 19px;
+  background-color: #2196F3;
+  border-radius: 50%;
+  box-shadow: 0 0 15px #2196F3;
+  border: 3px solid white;
+  z-index: 1;
+}
+
+button {
+  background: #222;
+  color: white;
+  border: 1px solid #444;
+  padding: 10px 14px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+button:hover {
+  background: #333;
+}
+
+#alerta {
+  position: absolute;
+  top: 75px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 82, 82, 0.95);
+  padding: 14px 24px;
+  border-radius: 14px;
+  font-weight: bold;
+  display: none;
+  z-index: 10;
+  box-shadow: 0 0 20px rgba(255,82,82,0.6);
+}
+
+@media (max-width: 800px) {
+  footer {
+    grid-template-columns: 1fr;
+    min-height: 260px;
+    padding: 16px;
+  }
+
+  #status-pill {
+    width: auto;
+  }
+}
+</style>
+</head>
+
+<body>
+
+<div id="topbar">
+  <div>
+    <div id="brand">ONTAMIWAWA</div>
+    <div id="subbrand">Centro de monitoreo GPS para niños</div>
+  </div>
+
+  <button onclick="centrarNino()">Centrar niño</button>
+</div>
+
+<div id="alerta">⚠️ ALERTA: El niño salió del perímetro</div>
+<div id="mapa"></div>
+
+<footer>
+  <div class="info-panel">
+    <div class="label">ÚLTIMA LECTURA GPS DEL NIÑO</div>
+    <div id="gps-coords" class="value">Esperando datos MQTT...</div>
+    <div id="last-web" style="font-size: 13px; opacity: 0.65;">Recepción web: ---</div>
+  </div>
+
+  <div id="status-pill">SIN ÁREA DEFINIDA</div>
+
+  <div class="info-panel" style="text-align: right;">
+    <div id="mqtt-status" style="color: #ff5252; font-weight: bold;">MQTT DESCONECTADO</div>
+    <div id="distancia" style="font-size: 15px; opacity: 0.8;">Distancia padre-niño: ---</div>
+    <div style="font-size: 12px; opacity: 0.5;">ESP32-S3 → MQTT → OntamiWawa Web</div>
+  </div>
+</footer>
+
+<script>
+mapboxgl.accessToken = 'pk.eyJ1IjoiZWtyNCIsImEiOiJjbW01OHdvemIwM254MnBvbXpwOGQ3dm5oIn0.khUNWYE3u9G8oJ2jfaWjEA';
+
+const map = new mapboxgl.Map({
+  container: 'mapa',
+  style: 'mapbox://styles/mapbox/dark-v11',
+  center: [-68.1193, -16.5000],
+  zoom: 15
+});
+
+const draw = new MapboxDraw({
+  displayControlsDefault: false,
+  controls: {
+    polygon: true,
+    trash: true
+  }
+});
+
+map.addControl(draw, 'top-right');
+map.addControl(new mapboxgl.NavigationControl(), 'top-left');
+
+const elNino = document.createElement('div');
+elNino.className = 'marcador-nino';
+
+const marcadorNino = new mapboxgl.Marker({ element: elNino })
+  .setLngLat([-68.1193, -16.5000])
+  .addTo(map);
+
+const elPadre = document.createElement('div');
+elPadre.className = 'marcador-padre';
+
+const marcadorPadre = new mapboxgl.Marker({ element: elPadre })
+  .setLngLat([-68.1193, -16.5000])
+  .addTo(map);
+
+let geofenceActual = null;
+let ultimaPosNino = null;
+let ultimaPosPadre = null;
+let ultimoMensaje = 0;
+let ruta = [];
+let alertaActiva = false;
+
+const mqttBroker = "ws://broker.emqx.io:8083/mqtt";
+const mqttTopic = "pulsera/gps/jose";
+
+const mqttClient = mqtt.connect(mqttBroker, {
+  clientId: "ontamiwawa_web_" + Math.random().toString(16).substring(2, 10),
+  clean: true,
+  connectTimeout: 5000,
+  reconnectPeriod: 2000
+});
+
+map.on('load', () => {
+  cargarGeocercaGuardada();
+
+  map.addSource("ruta-nino", {
+    type: "geojson",
+    data: {
+      type: "Feature",
+      geometry: {
+        type: "LineString",
+        coordinates: []
+      }
+    }
+  });
+
+  map.addLayer({
+    id: "ruta-nino-linea",
+    type: "line",
+    source: "ruta-nino",
+    paint: {
+      "line-color": "#00ffc8",
+      "line-width": 4,
+      "line-opacity": 0.8
+    }
+  });
+});
+
+if ("geolocation" in navigator) {
+  navigator.geolocation.watchPosition(
+    (pos) => {
+      ultimaPosPadre = [pos.coords.longitude, pos.coords.latitude];
+      marcadorPadre.setLngLat(ultimaPosPadre);
+      calcularDistancia();
+    },
+    (error) => {
+      console.log("No se pudo obtener ubicación del padre:", error);
+    },
+    {
+      enableHighAccuracy: true
+    }
+  );
+}
+
+mqttClient.on("connect", () => {
+  document.getElementById("mqtt-status").innerText = "MQTT CONECTADO";
+  document.getElementById("mqtt-status").style.color = "#4caf50";
+
+  mqttClient.subscribe(mqttTopic, (error) => {
+    if (error) console.log("Error al suscribirse:", error);
+    else console.log("Suscrito a:", mqttTopic);
+  });
+});
+
+<!-- SOLO TE PONGO LA PARTE IMPORTANTE MODIFICADA -->
+
+mqttClient.on("message", (topic, message) => {
+  try {
+    const texto = message.toString();
+    console.log("Mensaje MQTT recibido:", texto);
+
+    const data = JSON.parse(texto);
+
+    const lat = Number(data.latitud);
+    const lng = Number(data.longitud);
+    const hora = data.horaLectura || "---";
+
+    if (isNaN(lat) || isNaN(lng)) {
+      console.log("Datos GPS inválidos");
+      return;
+    }
+
+    ultimoMensaje = Date.now();
+    ultimaPosNino = [lng, lat];
+
+    marcadorNino.setLngLat(ultimaPosNino);
+
+    // historial
+    ruta.push(ultimaPosNino);
+    if (ruta.length > 300) ruta.shift();
+    actualizarRuta();
+
+    // texto
+    document.getElementById("gps-coords").innerText =
+      "Lat: " + lat.toFixed(6) +
+      " / Lon: " + lng.toFixed(6) +
+      " / Hora GPS: " + hora;
+
+    document.getElementById("last-web").innerText =
+      "Recepción web: " + new Date().toLocaleTimeString();
+
+    calcularSeguridad();
+    calcularDistancia();
+
+  } catch (error) {
+    console.log("Error parseando JSON MQTT:", error);
+  }
+});
+
+mqttClient.on("reconnect", () => {
+  document.getElementById("mqtt-status").innerText = "RECONECTANDO MQTT...";
+  document.getElementById("mqtt-status").style.color = "#ffc107";
+});
+
+mqttClient.on("error", (error) => {
+  console.log("Error MQTT:", error);
+  document.getElementById("mqtt-status").innerText = "ERROR MQTT";
+  document.getElementById("mqtt-status").style.color = "#ff5252";
+});
+
+mqttClient.on("close", () => {
+  document.getElementById("mqtt-status").innerText = "MQTT DESCONECTADO";
+  document.getElementById("mqtt-status").style.color = "#ff5252";
+});
+
+map.on('draw.create', actualizarGeocerca);
+map.on('draw.update', actualizarGeocerca);
+
+map.on('draw.delete', () => {
+  geofenceActual = null;
+  localStorage.removeItem("ontamiwawa_geocerca");
+  calcularSeguridad();
+});
+
+function actualizarGeocerca(e) {
+  const feature = e.features[0];
+
+  if (!feature || !feature.geometry || feature.geometry.type !== "Polygon") return;
+
+  draw.deleteAll();
+  draw.add(feature);
+
+  const coordenadas = feature.geometry.coordinates;
+
+  geofenceActual = turf.polygon(coordenadas);
+
+  localStorage.setItem("ontamiwawa_geocerca", JSON.stringify(feature));
+
+  calcularSeguridad();
+}
+
+function cargarGeocercaGuardada() {
+  const guardada = localStorage.getItem("ontamiwawa_geocerca");
+
+  if (!guardada) return;
+
+  try {
+    const feature = JSON.parse(guardada);
+    draw.add(feature);
+    geofenceActual = turf.polygon(feature.geometry.coordinates);
+    calcularSeguridad();
+  } catch (e) {
+    console.log("No se pudo cargar geocerca guardada:", e);
+  }
+}
+
+function calcularSeguridad() {
+  const pill = document.getElementById('status-pill');
+
+  if (ultimoMensaje > 0 && Date.now() - ultimoMensaje > 10000) {
+    pill.innerText = "SIN SEÑAL DEL DISPOSITIVO";
+    pill.className = "sin-senal";
+    ocultarAlerta();
+    return;
+  }
+
+  if (!geofenceActual) {
+    pill.innerText = "SIN ÁREA DEFINIDA";
+    pill.className = "";
+    ocultarAlerta();
+    return;
+  }
+
+  if (!ultimaPosNino) {
+    pill.innerText = "ESPERANDO GPS...";
+    pill.className = "";
+    ocultarAlerta();
+    return;
+  }
+
+  const puntoNino = turf.point(ultimaPosNino);
+  const estaDentro = turf.booleanPointInPolygon(puntoNino, geofenceActual);
+
+  if (estaDentro) {
+    pill.innerText = "DENTRO DEL PERÍMETRO";
+    pill.className = "dentro";
+    ocultarAlerta();
+  } else {
+    pill.innerText = "FUERA DE RANGO";
+    pill.className = "fuera";
+    mostrarAlerta();
+  }
+}
+
+function calcularDistancia() {
+  if (!ultimaPosNino || !ultimaPosPadre) {
+    document.getElementById("distancia").innerText = "Distancia padre-niño: ---";
+    return;
+  }
+
+  const desde = turf.point(ultimaPosPadre);
+  const hasta = turf.point(ultimaPosNino);
+
+  const distanciaKm = turf.distance(desde, hasta, { units: "kilometers" });
+  const metros = distanciaKm * 1000;
+
+  document.getElementById("distancia").innerText =
+    "Distancia padre-niño: " + metros.toFixed(1) + " m";
+}
+
+function actualizarRuta() {
+  if (!map.getSource("ruta-nino")) return;
+
+  map.getSource("ruta-nino").setData({
+    type: "Feature",
+    geometry: {
+      type: "LineString",
+      coordinates: ruta
+    }
+  });
+}
+
+function centrarNino() {
+  if (!ultimaPosNino) {
+    alert("Aún no hay ubicación del niño.");
+    return;
+  }
+
+  map.easeTo({
+    center: ultimaPosNino,
+    zoom: 17,
+    duration: 800
+  });
+}
+
+function mostrarAlerta() {
+  const alerta = document.getElementById("alerta");
+  alerta.style.display = "block";
+
+  if (!alertaActiva) {
+    alertaActiva = true;
+
+    if (navigator.vibrate) {
+      navigator.vibrate([250, 150, 250]);
+    }
+  }
+}
+
+function ocultarAlerta() {
+  document.getElementById("alerta").style.display = "none";
+  alertaActiva = false;
+}
+
+setInterval(() => {
+  if (ultimoMensaje > 0) {
+    calcularSeguridad();
+  }
+}, 2000);
+</script>
+
+</body>
+</html>
