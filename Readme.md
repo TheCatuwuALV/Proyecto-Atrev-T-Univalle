@@ -41,3 +41,26 @@ Abre tu terminal en la carpeta donde desees guardar el proyecto:
 
 ```bash
 git clone [https://github.com/TU-USUARIO/ontamiwawa.git](https://github.com/TU-USUARIO/ontamiwawa.git)
+```
+
+### 2. abrir el dashboard
+
+Dado que toda la lógica corre del lado del cliente, no necesitas instalar dependencias de Node. Simplemente abre el archivo index.html en tu navegador favorito (o usa la extensión Live Server en VS Code) para ver la interfaz de control.
+
+### 3. Usar el simulador de Hardware (Opcional)
+
+Si no se tiene la pulsera conectada y se requiere simular que el niño se mueve (para ver cómo funciona el sistema de alertas visuales), abre un cliente como MQTT Explorer, conéctate a broker.emqx.io:8083 (vía WebSockets) y publica este mensaje en el tópico pulsera/gps/jose:
+
+```json
+{
+  "latitud": -16.5000,
+  "longitud": -68.1193,
+  "horaLectura": "14:30"
+}
+```
+El mapa recibirá el JSON y moverá el marcador rojo exactamente como lo haría con el microcontrolador real.
+
+## Autor
+
+**Jose Andres Callisaya Choque**
+*Estudiante de Ingeniería en Sistemas Informáticos | Universidad Privada del Valle | UNIVALLE*
